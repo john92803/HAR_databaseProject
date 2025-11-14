@@ -1,3 +1,4 @@
+import time
 import pandas as pd
 import numpy as np
 import psycopg2
@@ -5,6 +6,8 @@ from psycopg2.extras import execute_values
 from datetime import datetime, timedelta
 import struct
 import zlib
+
+start_time = time.time()
 
 # TimescaleDB連接設定
 DB_CONFIG = {
@@ -386,7 +389,7 @@ def load_and_compress_data():
     return records
 
 
-def insert_compressed_data(conn, records, batch_size=1000):
+def insert_compressed_data(conn, records, batch_size=10000):
     """批次插入壓縮資料"""
     print("\n正在插入資料到資料庫...")
 
@@ -503,7 +506,10 @@ def main():
         show_statistics(conn)
 
         conn.close()
+        end_time = time.time()
+        execution_time = end_time - start_time
         print("\n✓ 所有操作完成！")
+        print("程式執行時間：", int(execution_time), "秒")
 
     except Exception as e:
         print(f"錯誤: {str(e)}")

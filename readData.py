@@ -1,16 +1,19 @@
+import time
 import pandas as pd
 import psycopg2
 from psycopg2.extras import execute_values
 from datetime import datetime, timedelta
 import numpy as np
 
+start_time = time.time()
+
 # TimescaleDB連接設定
 DB_CONFIG = {
     'host': 'localhost',
     'port': 5432,
     'database': 'har',
-    'user': '',
-    'password': ''
+    'user': 'postgres',
+    'password': '123'
 }
 
 # CSV檔案路徑
@@ -96,11 +99,6 @@ def create_tables(conn):
         """)
         
         cur.execute("""
-            CREATE INDEX IF NOT EXISTS idx_window 
-            ON activity_data (window_id, sample_index);
-        """)
-        
-        cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_time 
             ON activity_data (time DESC);
         """)
@@ -125,11 +123,6 @@ def load_csv_files():
                        skip_blank_lines=True,
                        encoding='utf-8')
     
-    
-    # 顯示欄位名稱
-    print(f"\nX軸欄位: {df_x.columns.tolist()[:5]}...")
-    print(f"Y軸欄位: {df_y.columns.tolist()[:5]}...")
-    print(f"Z軸欄位: {df_z.columns.tolist()[:5]}...")
 
     # 驗證三個檔案行數相同
     if len(df_x) != len(df_y) or len(df_y) != len(df_z):
@@ -296,12 +289,15 @@ def main():
                 GROUP BY subject_id 
                 ORDER BY subject_id;
             """)
-            print("\n各受試者的視窗數:")
-            for row in cur.fetchall():
-                print(f"  受試者 {row[0]}: {row[1]} 個視窗")
+            # print("\n各受試者的視窗數:")
+            # for row in cur.fetchall():
+            #     print(f"  受試者 {row[0]}: {row[1]} 個視窗")
         
         conn.close()
+        end_time = time.time()
+        execution_time = end_time - start_time
         print("\n資料載入完成！")
+        print("程式執行時間：", int(execution_time), "秒")
         
     except Exception as e:
         print(f"錯誤: {str(e)}")
