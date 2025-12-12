@@ -89,7 +89,6 @@ def create_tables(conn):
                     print("表格已經是hypertable")
             except Exception as e:
                 print(f"創建hypertable時出錯: {e}")
-                print("將繼續使用普通表格")
                 conn.rollback()
         
         # 創建索引
@@ -104,7 +103,7 @@ def create_tables(conn):
         """)
         
         conn.commit()
-        print("索引創建成功")
+        print("indexes created successfully.")
 
 
 def load_csv_files():
@@ -126,8 +125,8 @@ def load_csv_files():
 
     # 驗證三個檔案行數相同
     if len(df_x) != len(df_y) or len(df_y) != len(df_z):
-        print("\n!!! 警告: 三個CSV檔案的行數不一致 !!!")
-        print(f"差異: X={len(df_x)}, Y={len(df_y)}, Z={len(df_z)}")
+        print("\nerror: csv files have different number of rows.")
+        print(f"difference: X={len(df_x)}, Y={len(df_y)}, Z={len(df_z)}")
         
         # 找出最小行數
         min_rows = min(len(df_x), len(df_y), len(df_z))
@@ -154,10 +153,10 @@ def prepare_data(df_x, df_y, df_z, base_time=None):
     records = []
     window_id = 0
     
-    print("正在準備資料...")
+    print("processing data...")
     for idx in range(len(df_x)):
         if idx % 100 == 0:
-            print(f"處理進度: {idx}/{len(df_x)}")
+            print(f"processing row: {idx}/{len(df_x)}")
         
         activity_id = int(df_x.iloc[idx]['activity'])
         subject_id = int(df_x.iloc[idx]['subject'])
@@ -188,14 +187,13 @@ def prepare_data(df_x, df_y, df_z, base_time=None):
         
         window_id += 1
     
-    print(f"共準備 {len(records)} 筆資料")
+    print(f"total records: {len(records)} ")
     return records
 
 
 def insert_data(conn, records, batch_size=10000):
     """批次插入資料到TimescaleDB"""
-    print("正在插入資料到資料庫...")
-    
+
     insert_query = """
         INSERT INTO activity_data 
         (time, subject_id, activity_id, activity_name, window_id, 
@@ -212,9 +210,9 @@ def insert_data(conn, records, batch_size=10000):
             conn.commit()
             
             current_batch = i // batch_size + 1
-            print(f"已插入批次 {current_batch}/{total_batches}")
+            print(f"inserted {current_batch}/{total_batches}")
     
-    print("資料插入完成！")
+    print("data insertion completed.")
 
 
 # def create_summary_views(conn):
@@ -271,7 +269,7 @@ def main():
         with conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) FROM activity_data;")
             total_records = cur.fetchone()[0]
-            print(f"\n總記錄數: {total_records:,}")
+            print(f"total records: {total_records:,}")
             
             cur.execute("""
                 SELECT activity_name, COUNT(*) as count 
@@ -279,7 +277,7 @@ def main():
                 GROUP BY activity_name 
                 ORDER BY count DESC;
             """)
-            print("\n各活動的資料筆數:")
+            print("\each activity statistics:")
             for row in cur.fetchall():
                 print(f"  {row[0]}: {row[1]:,}")
             
@@ -296,11 +294,11 @@ def main():
         conn.close()
         end_time = time.time()
         execution_time = end_time - start_time
-        print("\n資料載入完成！")
-        print("程式執行時間：", int(execution_time), "秒")
+        print("done")
+        print("time：", int(execution_time), "秒")
         
     except Exception as e:
-        print(f"錯誤: {str(e)}")
+        print(f"error: {str(e)}")
         raise
 
 

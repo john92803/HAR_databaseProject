@@ -1,3 +1,4 @@
+import time
 import numpy as np
 import pandas as pd
 import psycopg2
@@ -12,13 +13,15 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix, classification_report
 
+start_time = time.time()
+
 # 資料庫連接設定
 DB_CONFIG = {
     'host': 'localhost',
     'port': 5432,
     'database': 'har',
-    'user': '',
-    'password': ''
+    'user': 'postgres',
+    'password': '123'
 }
 
 # 活動標籤映射
@@ -34,7 +37,6 @@ ACTIVITY_LABELS = {
 
 def load_data_from_database():
     """從資料庫讀取資料"""
-    print("正在連接資料庫...")
     conn = psycopg2.connect(**DB_CONFIG)
 
     # 查詢資料，按window_id和sample_index排序
@@ -51,20 +53,20 @@ def load_data_from_database():
         ORDER BY window_id, sample_index;
     """
 
-    print("正在讀取資料...")
+    print("processing...")
     df = pd.read_sql_query(query, conn)
     conn.close()
 
-    print(f"讀取完成: {len(df)} 筆資料")
-    print(f"視窗數量: {df['window_id'].nunique()}")
-    print(f"活動類型: {df['activity_name'].unique()}")
+    print(f"complete: {len(df)} ")
+    # print(f"視窗數量: {df['window_id'].nunique()}")
+    # print(f"活動類型: {df['activity_name'].unique()}")
 
     return df
 
 
 def prepare_training_data(df):
     """準備訓練資料"""
-    print("\n正在準備訓練資料...")
+    print("preparing training data...")
 
     # 按window_id分組，每個視窗應該有128個樣本
     windows = []
@@ -88,11 +90,11 @@ def prepare_training_data(df):
 
     print(f"X shape: {X.shape}")
     print(f"y shape: {y.shape}")
-    print(f"活動分布:")
+    print(f"activity distribution:")
     unique, counts = np.unique(y, return_counts=True)
     for label, count in zip(unique, counts):
         activity_name = ACTIVITY_LABELS[label + 1]
-        print(f"  {activity_name}: {count} 個視窗")
+        print(f"window:  {activity_name}: {count} ")
 
     return X, y
 
@@ -147,7 +149,7 @@ def plot_training_history(history):
 
     plt.tight_layout()
     plt.savefig('training_history.png', dpi=300, bbox_inches='tight')
-    print("訓練歷史圖已儲存: training_history.png")
+    print("training_history saved: training_history.png")
     plt.close()
 
 
@@ -164,13 +166,13 @@ def plot_confusion_matrix(y_true, y_pred, activity_labels):
     plt.xlabel('Predicted Label')
     plt.tight_layout()
     plt.savefig('confusion_matrix.png', dpi=300, bbox_inches='tight')
-    print("混淆矩陣已儲存: confusion_matrix.png")
+    print("confusion_matrix saved: confusion_matrix.png")
     plt.close()
 
 
 def evaluate_model(model, X_test, y_test):
     """評估模型"""
-    print("\n正在評估模型...")
+    print("\n evaluating model...")
 
     # 預測
     y_pred_proba = model.predict(X_test)
@@ -178,12 +180,12 @@ def evaluate_model(model, X_test, y_test):
 
     # 評估指標
     test_loss, test_accuracy = model.evaluate(X_test, y_test, verbose=0)
-    print(f"\n測試集準確率: {test_accuracy:.4f}")
-    print(f"測試集損失: {test_loss:.4f}")
+    print(f"\n test accuracy: {test_accuracy:.4f}")
+    print(f"test loss: {test_loss:.4f}")
 
     # 詳細分類報告
     activity_labels = [ACTIVITY_LABELS[i+1] for i in range(6)]
-    print("\n分類報告:")
+    print("\nclassification report:")
     print(classification_report(y_test, y_pred, target_names=activity_labels))
 
     # 繪製混淆矩陣
@@ -206,11 +208,11 @@ def main():
             X, y, test_size=0.2, random_state=42, stratify=y
         )
 
-        print(f"\n訓練集大小: {X_train.shape[0]}")
-        print(f"測試集大小: {X_test.shape[0]}")
+        print(f"\ntraining set size: {X_train.shape[0]}")
+        print(f"test set size: {X_test.shape[0]}")
 
         # 4. 創建模型
-        print("\n創建模型...")
+        print("\ncreating model...")
         num_classes = len(ACTIVITY_LABELS)
         model = create_model(input_shape=(128, 3), num_classes=num_classes)
         model.summary()
@@ -233,7 +235,7 @@ def main():
         )
 
         # 6. 訓練模型
-        print("\n開始訓練模型...")
+        print("\nstarting training...")
         history = model.fit(
             X_train, y_train,
             epochs=200,
@@ -251,20 +253,23 @@ def main():
 
         # 9. 儲存最終模型
         model.save('final_model.keras')
-        print("\n模型已儲存: final_model.keras")
+        print("\nmodel saved: final_model.keras")
 
         # 10. 顯示一些預測範例
-        print("\n預測範例:")
+        print("\npredictions:")
         for i in range(min(10, len(X_test))):
             true_label = ACTIVITY_LABELS[y_test[i] + 1]
             pred_label = ACTIVITY_LABELS[y_pred[i] + 1]
             correct = "✓" if y_test[i] == y_pred[i] else "✗"
-            print(f"{correct} 真實: {true_label:20s} | 預測: {pred_label:20s}")
+            print(f"{correct} true positive: {true_label:20s} | predicted: {pred_label:20s}")
 
-        print("\n訓練完成！")
+        end_time = time.time()
+        execution_time = end_time - start_time
+        print("\ntrain complete！")
+        print("time：", int(execution_time), "seconds")
 
     except Exception as e:
-        print(f"錯誤: {str(e)}")
+        print(f"error: {str(e)}")
         import traceback
         traceback.print_exc()
 

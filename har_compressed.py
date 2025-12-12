@@ -95,7 +95,7 @@ class CompressionSchemes:
         return decoded
 
     @staticmethod
-    def quantize_float(values, scale=1000):
+    def quantize_float(values, scale):
         """SCALE：將浮點數轉換為整數（論文中的SCALE方案）"""
         return [int(v * scale) for v in values], scale
 
@@ -170,9 +170,10 @@ class CompressedDataLoader:
         x_data, y_data, z_data = window_data
 
         # 1. SCALE: 將浮點數轉為整數（保留3位小數精度）
-        x_int, scale = self.compression.quantize_float(x_data, scale=1000)
-        y_int, _ = self.compression.quantize_float(y_data, scale=1000)
-        z_int, _ = self.compression.quantize_float(z_data, scale=1000)
+        scale = 1000
+        x_int, scale = self.compression.quantize_float(x_data, scale)
+        y_int, _ = self.compression.quantize_float(y_data, scale)
+        z_int, _ = self.compression.quantize_float(z_data, scale)
 
         # 2. DELTA: 編碼差異值（對於有序的時序資料很有效）
         x_deltas, x_base = self.compression.delta_encode(x_int)
@@ -245,12 +246,16 @@ def create_compressed_tables(conn):
             cur.execute("CREATE EXTENSION IF NOT EXISTS timescaledb;")
             conn.commit()
             use_timescale = True
-            print("TimescaleDB擴展已啟用")
+            print("timescaledb extension enabled.")
         except Exception as e:
             print(f"無法啟用TimescaleDB擴展: {e}")
             print("將使用普通PostgreSQL表格")
             use_timescale = False
             conn.rollback()
+
+        # 刪除舊表（如果需要重新創建）
+        cur.execute("DROP TABLE IF EXISTS activity_data CASCADE;")
+        conn.commit()
 
         # 創建壓縮資料表（按視窗儲存）
         cur.execute("""
@@ -297,12 +302,12 @@ def create_compressed_tables(conn):
         """)
 
         conn.commit()
-        print("壓縮資料表創建成功！")
+        print("compressed tables created successfully.")
 
 
 def load_and_compress_data():
     """載入CSV並壓縮儲存"""
-    print("正在讀取CSV檔案...")
+    print("loading and compressing data...")
 
     # 讀取三個CSV檔案
     df_x = pd.read_csv(CSV_FILES['x'],
@@ -326,12 +331,12 @@ def load_and_compress_data():
     df_y = df_y.iloc[:min_rows].reset_index(drop=True)
     df_z = df_z.iloc[:min_rows].reset_index(drop=True)
 
-    print(f"共 {min_rows} 個視窗待處理")
+
 
     # 分析資料特性
     loader = CompressedDataLoader()
     properties = loader.analyze_column_properties(df_x)
-    print(f"\n資料特性分析:")
+    # print(f"\n資料特性分析:")
     for key, value in properties.items():
         print(f"  {key}: {value}")
 
@@ -343,7 +348,6 @@ def load_and_compress_data():
     total_original_size = 0
     total_compressed_size = 0
 
-    print("\n正在壓縮資料...")
     for idx in range(min_rows):
         if idx % 100 == 0:
             print(f"進度: {idx}/{min_rows}")
@@ -381,17 +385,16 @@ def load_and_compress_data():
         ))
 
     overall_ratio = total_compressed_size / total_original_size
-    print(f"\n總體壓縮比: {overall_ratio:.2%}")
-    print(f"原始大小: {total_original_size / 1024 / 1024:.2f} MB")
-    print(f"壓縮後大小: {total_compressed_size / 1024 / 1024:.2f} MB")
-    print(f"節省空間: {(1 - overall_ratio) * 100:.2f}%")
+    print(f"\ntotal compression ratio: {overall_ratio:.2%}")
+    print(f"original size: {total_original_size / 1024 / 1024:.2f} MB")
+    print(f"compressed size: {total_compressed_size / 1024 / 1024:.2f} MB")
+    print(f"size reduction: {(1 - overall_ratio) * 100:.2f}%")
 
     return records
 
 
 def insert_compressed_data(conn, records, batch_size=10000):
     """批次插入壓縮資料"""
-    print("\n正在插入資料到資料庫...")
 
     insert_query = """
         INSERT INTO activity_data_compressed 
@@ -412,41 +415,41 @@ def insert_compressed_data(conn, records, batch_size=10000):
             current_batch = i // batch_size + 1
             print(f"已插入批次 {current_batch}/{total_batches}")
 
-    print("資料插入完成！")
+    print("compressed data insertion complete.")
 
 
-def verify_compression(conn):
-    """驗證壓縮效果"""
-    print("\n驗證壓縮效果...")
+# def verify_compression(conn):
+#     """驗證壓縮效果"""
+#     print("\n驗證壓縮效果...")
 
-    with conn.cursor() as cur:
-        # 隨機選取一個視窗進行解壓縮測試
-        cur.execute("""
-            SELECT window_id, compressed_data, activity_name
-            FROM activity_data_compressed
-            ORDER BY RANDOM()
-            LIMIT 1
-        """)
+#     with conn.cursor() as cur:
+#         # 隨機選取一個視窗進行解壓縮測試
+#         cur.execute("""
+#             SELECT window_id, compressed_data, activity_name
+#             FROM activity_data_compressed
+#             ORDER BY RANDOM()
+#             LIMIT 1
+#         """)
 
-        row = cur.fetchone()
-        if row:
-            window_id, compressed_data, activity_name = row
+#         row = cur.fetchone()
+#         if row:
+#             window_id, compressed_data, activity_name = row
 
-            # 解壓縮
-            loader = CompressedDataLoader()
-            x_data, y_data, z_data = loader.decompress_window_data(
-                bytes(compressed_data))
+#             # 解壓縮
+#             loader = CompressedDataLoader()
+#             x_data, y_data, z_data = loader.decompress_window_data(
+#                 bytes(compressed_data))
 
-            print(f"\n解壓縮測試 (Window {window_id}, Activity: {activity_name}):")
-            print(f"  X軸前5個值: {x_data[:5]}")
-            print(f"  Y軸前5個值: {y_data[:5]}")
-            print(f"  Z軸前5個值: {z_data[:5]}")
-            print("  ✓ 解壓縮成功")
+#             print(f"\n解壓縮測試 (Window {window_id}, Activity: {activity_name}):")
+#             print(f"  X軸前5個值: {x_data[:5]}")
+#             print(f"  Y軸前5個值: {y_data[:5]}")
+#             print(f"  Z軸前5個值: {z_data[:5]}")
+#             print("  ✓ 解壓縮成功")
 
 
 def show_statistics(conn):
     """顯示壓縮統計資訊"""
-    print("\n=== 壓縮統計資訊 ===")
+
 
     with conn.cursor() as cur:
         # 總體統計
@@ -459,18 +462,18 @@ def show_statistics(conn):
             FROM activity_data_compressed
         """)
         row = cur.fetchone()
-        print(f"\n總體統計:")
-        print(f"  視窗總數: {row[0]:,}")
-        print(f"  原始大小: {row[1]:.2f} MB")
-        print(f"  壓縮後大小: {row[2]:.2f} MB")
-        print(f"  壓縮比: {row[3]:.2f}%")
-        print(f"  空間節省: {(100 - row[3]):.2f}%")
+        print(f"\ntotal compression statistics:")
+        print(f"  window_count: {row[0]:,}")
+        print(f"  original: {row[1]:.2f} MB")
+        print(f"  compressed: {row[2]:.2f} MB")
+        print(f"  compression_ratio: {row[3]:.2f}%")
+        print(f"  saving: {(100 - row[3]):.2f}%")
 
         # 各活動的壓縮統計
         cur.execute("SELECT * FROM compression_statistics")
-        print("\n各活動壓縮統計:")
+        print("\neach activity compression statistics:")
         print(
-            f"{'活動':<25} {'視窗數':<10} {'原始(KB)':<12} {'壓縮(KB)':<12} {'壓縮比':<12} {'節省':<10}")
+            f"{'activity':<25} {'window_count':<10} {'original(KB)':<12} {'compressed(KB)':<12} {'compression_ratio':<12} {'saving':<10}")
         print("-" * 85)
         for row in cur.fetchall():
             activity_name = row[0]
@@ -486,9 +489,7 @@ def main():
     """主程式"""
     try:
         # 連接資料庫
-        print("正在連接資料庫...")
         conn = psycopg2.connect(**DB_CONFIG)
-        print("資料庫連接成功！")
 
         # 創建表格
         create_compressed_tables(conn)
@@ -499,8 +500,8 @@ def main():
         # 插入資料
         insert_compressed_data(conn, records)
 
-        # 驗證壓縮
-        verify_compression(conn)
+        # # 驗證壓縮
+        # verify_compression(conn)
 
         # 顯示統計資訊
         show_statistics(conn)
@@ -508,11 +509,10 @@ def main():
         conn.close()
         end_time = time.time()
         execution_time = end_time - start_time
-        print("\n✓ 所有操作完成！")
-        print("程式執行時間：", int(execution_time), "秒")
+        print("time：", int(execution_time), "sec")
 
     except Exception as e:
-        print(f"錯誤: {str(e)}")
+        print(f"error: {str(e)}")
         import traceback
         traceback.print_exc()
 
