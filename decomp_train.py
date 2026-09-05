@@ -21,8 +21,8 @@ DB_CONFIG = {
     'host': 'localhost',
     'port': 5432,
     'database': 'har',
-    'user': '',
-    'password': ''
+    'user': 'postgres',
+    'password': '123'
 }
 
 # 活動標籤映射

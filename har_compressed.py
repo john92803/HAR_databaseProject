@@ -14,8 +14,8 @@ DB_CONFIG = {
     'host': 'localhost',
     'port': 5432,
     'database': 'har',
-    'user': '',
-    'password': ''
+    'user': 'postgres',
+    'password': '123'
 }
 
 # CSV檔案路徑
